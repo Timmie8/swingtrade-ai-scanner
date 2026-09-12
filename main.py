@@ -1,3 +1,5 @@
+import sys
+import os
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -8,7 +10,7 @@ warnings.filterwarnings('ignore')
 
 def get_live_swing_score(symbol):
     print(f"\n==========================================")
-    print(f" LIVE ANALYSE OPHALEN VOOR: {symbol}")
+    print(f" LIVE ANALYSE OPHALEN VOOR: {symbol.upper()}")
     print(f"==========================================")
     
     ticker = yf.Ticker(symbol)
@@ -16,7 +18,7 @@ def get_live_swing_score(symbol):
     # Live/Daily Data
     df = ticker.history(period="60d", interval="1d")
     if df.empty or len(df) < 20:
-        print(f"Geen data voor {symbol}")
+        print(f"Geen data of ongeldige ticker voor: {symbol}")
         return None
         
     info = ticker.info
@@ -24,7 +26,7 @@ def get_live_swing_score(symbol):
     prev_close = df['Close'].iloc[-2]
     day_change_pct = ((live_price - prev_close) / prev_close) * 100
     
-    # Volume
+    # Volume Ratio
     current_volume = df['Volume'].iloc[-1]
     avg_vol_20d = df['Volume'].rolling(20).mean().iloc[-1]
     vol_ratio = current_volume / avg_vol_20d if avg_vol_20d > 0 else 1.0
@@ -35,7 +37,7 @@ def get_live_swing_score(symbol):
     rsi = ta.momentum.rsi(df['Close'], window=14).iloc[-1]
     macd_diff = ta.trend.MACD(df['Close']).macd_diff().iloc[-1]
     
-    # Opties Put/Call
+    # Opties Put/Call Ratio
     pcr_volume = 1.0
     pcr_status = "NEUTRAAL"
     try:
@@ -64,7 +66,7 @@ def get_live_swing_score(symbol):
     short_pct = info.get('shortPercentOfFloat', 0) or 0
     sector = info.get('sector', 'Onbekend')
     
-    # AI Scoring (1-10)
+    # AI Scoring Model (1-10)
     score = 5.0
     if live_price > ema5 > ema15: score += 1.5
     elif live_price < ema5 < ema15: score -= 1.5
@@ -100,11 +102,23 @@ def get_live_swing_score(symbol):
     print(f" LIVE SWING AI SCORE: {live_ai_score} / 10")
     print(f" Advies: {'BUY / LONG' if live_ai_score >= 6.8 else ('WATCH' if live_ai_score >= 5.0 else 'AVOID / SHORT')}")
     print(f" Setup: Entry ${entry} | SL: ${sl} | TP1: ${tp1} | TP2: ${tp2}")
-    
-    return live_ai_score
 
 if __name__ == "__main__":
-    # Pas deze lijst aan naar de aandelen die je wilt scannen:
-    watchlist = ["NVDA", "TSLA", "PLTR", "AMD", "AAPL", "AMZN", "MSFT", "META"]
-    for t in watchlist:
-        get_live_swing_score(t)
+    watchlist = []
+    
+    # 1. Check of er tickers via de commandline zijn meegegeven (handmatige input)
+    if len(sys.argv) > 1 and sys.argv[1].strip():
+        raw_input = sys.argv[1]
+        watchlist = [t.strip().upper() for t in raw_input.replace(',', ' ').split() if t.strip()]
+    
+    # 2. Als er niks handmatig is opgegeven, lees dan watchlist.txt
+    if not watchlist:
+        if os.path.exists("watchlist.txt"):
+            with open("watchlist.txt", "r") as f:
+                watchlist = [line.strip().upper() for line in f.readlines() if line.strip() and not line.startswith("#")]
+        else:
+            watchlist = ["NVDA", "TSLA", "AMD", "PLTR"] # Standaard terugval
+
+    print(f"Aandelen om te scannen: {', '.join(watchlist)}")
+    for symbol in watchlist:
+        get_live_swing_score(symbol)
